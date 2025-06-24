@@ -1,0 +1,11 @@
+geopandas==1.1.0
+pandas==2.3.0
+numpy==2.2.6
+torch==2.7.1
+torchvision==0.22.1
+timm==0.3.2
+python-dotenv==1.1.0
+openai==1.90.0
+glob2==0.7
+fsspec==2025.5.1
+pypgrio==0.11.0

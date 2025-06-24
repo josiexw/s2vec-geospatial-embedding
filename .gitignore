@@ -1,0 +1,6 @@
+venv/
+uploads/
+patches/
+data/
+.env
+*.csv
