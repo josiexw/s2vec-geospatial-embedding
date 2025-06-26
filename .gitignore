@@ -1,5 +1,6 @@
 venv/
 uploads/
 patches/
+qdrant_db/
 .env
-*.csv
+*.pth

@@ -21,6 +21,7 @@ bazel build //:s2
 
 ## Use MAE
 Source: https://github.com/facebookresearch/mae
+Make the following fix to timm==0.3.2: https://github.com/huggingface/pytorch-image-models/issues/420#issuecomment-776459842
 Run from within third_party/mae
 ```
 export PYTHONPATH="$PWD:$PYTHONPATH"
