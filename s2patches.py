@@ -14,7 +14,7 @@ PATCHES_DIR = 'patches'
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(PATCHES_DIR, exist_ok=True)
 
-level = 12  # S2 cell level
+LEVELS = [10, 12, 14, 16, 18]  # S2 cell level
 W = 3  # Window size
 visited = set()
 features = {}
@@ -27,14 +27,9 @@ feature_set = set()
 for filename in os.listdir(INPUT_DIR):
     path = os.path.join(INPUT_DIR, filename)
     try:
-        if path.endswith(".gpkg"):
-            layers = pyogrio.list_layers(path)
-            for layer in layers:
-                gdf = gpd.read_file(path, layer=layer[0])
-                feature_set.update(gdf.columns)
-                del gdf; gc.collect()
-        else:
-            gdf = gpd.read_file(path)
+        layers = pyogrio.list_layers(path)
+        for layer in layers:
+            gdf = gpd.read_file(path, layer=layer[0])
             feature_set.update(gdf.columns)
             del gdf; gc.collect()
     except Exception as e:
@@ -107,33 +102,33 @@ def rasterize_from_features(cell_id, local_features, feature_dim):
 for filename in os.listdir(INPUT_DIR):
     filename_short = filename.replace(".gpkg", "")
     path = os.path.join(INPUT_DIR, filename)
+    layers = pyogrio.list_layers(path)
 
-    if path.endswith(".gpkg") or path.endswith(".json"):
-        layers = pyogrio.list_layers(path)
-        for layer_name, _ in layers:
-            try:
-                gdf = gpd.read_file(path, layer=layer_name)
-            except:
-                continue
-            if gdf.empty:
-                print(f"Skipping empty layer: {layer_name}")
-                continue
-            if not isinstance(gdf, gpd.GeoDataFrame) or gdf.geometry.name not in gdf.columns:
-                print(f"Skipping non-spatial layer: {layer_name}")
-                continue
-            if gdf.crs is None:
-                print(f"Skipping layer with undefined CRS: {layer_name}")
-                continue
+    for layer_name, _ in layers:
+        try:
+            gdf = gpd.read_file(path, layer=layer_name)
+        except:
+            continue
+        if gdf.empty:
+            print(f"Skipping empty layer: {layer_name}")
+            continue
+        if not isinstance(gdf, gpd.GeoDataFrame) or gdf.geometry.name not in gdf.columns:
+            print(f"Skipping non-spatial layer: {layer_name}")
+            continue
+        if gdf.crs is None:
+            print(f"Skipping layer with undefined CRS: {layer_name}")
+            continue
 
-            gdf = gdf.to_crs("EPSG:3857") if gdf.crs != "EPSG:3857" else gdf
-            gdf["centroid"] = gdf.geometry.centroid
-            gdf = gdf[gdf["centroid"].is_valid & ~gdf["centroid"].is_empty]
-            gdf_centroids = gdf["centroid"].to_crs("EPSG:4326")
+        gdf = gdf.to_crs("EPSG:3857") if gdf.crs != "EPSG:3857" else gdf
+        gdf["centroid"] = gdf.geometry.centroid
+        gdf = gdf[gdf["centroid"].is_valid & ~gdf["centroid"].is_empty]
+        gdf_centroids = gdf["centroid"].to_crs("EPSG:4326")
 
-            # Drop nans
-            gdf_centroids = gdf_centroids[~gdf_centroids.x.isna() & ~gdf_centroids.y.isna()]
-            gdf_centroids = gdf_centroids[np.isfinite(gdf_centroids.x) & np.isfinite(gdf_centroids.y)]
+        # Drop nans
+        gdf_centroids = gdf_centroids[~gdf_centroids.x.isna() & ~gdf_centroids.y.isna()]
+        gdf_centroids = gdf_centroids[np.isfinite(gdf_centroids.x) & np.isfinite(gdf_centroids.y)]
 
+        for level in LEVELS:
             cell_ids = [
                 s2.CellId.from_lat_lng(s2.LatLng.from_degrees(lat, lng)).parent(level).id()
                 for lat, lng in zip(gdf_centroids.y, gdf_centroids.x)
@@ -148,40 +143,6 @@ for filename in os.listdir(INPUT_DIR):
             }
             for cid in local_features:
                 patch = rasterize_from_features(s2.CellId(cid), local_features, local_features[cid].shape[0])
-                np.save(os.path.join(PATCHES_DIR, f"{filename_short}_{layer_name}_{cid}.npy"), patch)
-
-    else:
-        try:
-            gdf = gpd.read_file(path)
-        except:
-            continue
-
-        if gdf.empty:
-                print(f"Skipping empty layer: {layer_name}")
-                continue
-        if not isinstance(gdf, gpd.GeoDataFrame) or gdf.geometry.name not in gdf.columns:
-            print(f"Skipping non-spatial layer: {layer_name}")
-            continue
-        if gdf.crs is None:
-            print(f"Skipping layer with undefined CRS: {layer_name}")
-            continue
-
-        gdf = gdf.to_crs("EPSG:3857") if gdf.crs != "EPSG:3857" else gdf
-        gdf_centroids = gdf.geometry.centroid.to_crs("EPSG:4326")
-        cell_ids = [
-            s2.CellId.from_lat_lng(s2.LatLng.from_degrees(lat, lng)).parent(level).id()
-            for lat, lng in zip(gdf_centroids.y, gdf_centroids.x)
-        ]
-
-        encoded = encode_features(gdf, FEATURE_LIST)
-        encoded["cell_id"] = cell_ids
-        agg_df = encoded.groupby("cell_id").sum()
-        local_features = {
-            cid: row.values.astype(np.float32)
-            for cid, row in agg_df.iterrows()
-        }
-        for cid in local_features:
-            patch = rasterize_from_features(s2.CellId(cid), local_features, local_features[cid].shape[0])
-            np.save(os.path.join(PATCHES_DIR, f"{filename_short}_{layer_name}_{cid}.npy"), patch)
+                np.save(os.path.join(PATCHES_DIR, f"{filename_short}_{layer_name}_level{level}_{cid}.npy"), patch)
 
 print("Saved patches")

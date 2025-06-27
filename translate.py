@@ -15,12 +15,22 @@ def extract_gpkg(zip_path):
             tmp_dir = zip_path + "_tmp"
             os.makedirs(tmp_dir, exist_ok=True)
             zip_ref.extractall(tmp_dir)
+            skip_move = False
 
-            # Move GPKG files out
             for root, _, files in os.walk(tmp_dir):
                 for file in files:
                     if file.endswith(".gpkg"):
-                        shutil.move(os.path.join(root, file), os.path.join(CURRENT_DIR, file))
+                        target_path = os.path.join(CURRENT_DIR, file)
+                        if os.path.exists(target_path):
+                            skip_move = True
+                            print(f"Skipping move for {file} — already exists.")
+                            break
+
+            if not skip_move:
+                for root, _, files in os.walk(tmp_dir):
+                    for file in files:
+                        if file.endswith(".gpkg"):
+                            shutil.move(os.path.join(root, file), os.path.join(CURRENT_DIR, file))
 
             shutil.rmtree(tmp_dir)
             os.remove(zip_path)
@@ -46,8 +56,11 @@ def translate_gpkg(filepath):
         for layer in layers:
             try:
                 gdf = gpd.read_file(filepath, layer=layer)
+                if gdf.empty or gdf.geometry.is_empty.all():
+                    print(f"Skipping layer '{layer}' — empty or no valid geometry.")
+                    continue
             except Exception as e:
-                print(f"  Skipping unreadable layer '{layer}' in {filepath}: {e}")
+                print(f"Not translating unreadable layer '{layer}' in {filepath}: {e}")
                 continue
 
             # Translate column names
@@ -62,8 +75,12 @@ def translate_gpkg(filepath):
             for col in gdf.select_dtypes(include='object').columns:
                 gdf[col] = gdf[col].apply(translate_text)
 
-            # Save layer
-            gdf.to_file(out_path, driver="GPKG", layer=layer)
+            try:
+                gdf.to_file(out_path, driver="GPKG", layer=layer)
+                print(f"== Wrote layer '{layer}' to {out_path}")
+            except Exception as e:
+                print(f"xx Failed to write layer '{layer}': {e}")
+
         print(f"Saved translated GPKG to: {out_path}")
     except Exception as e:
         print(f"Failed to translate {filepath}: {e}")
