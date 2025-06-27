@@ -1,6 +1,7 @@
 venv/
-uploads/
 patches/
 qdrant_db/
+gpkg_files/
 .env
 *.pth
+*.csv

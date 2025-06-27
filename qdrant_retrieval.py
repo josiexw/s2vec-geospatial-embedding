@@ -31,6 +31,7 @@ PATCHES_DIR = "patches"
 patch_files = sorted(glob.glob(f"{PATCHES_DIR}/*.npy"))
 F = max(np.load(p).shape[-1] for p in patch_files)
 W = 3
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = MaskedAutoencoderViT(
     img_size=W, patch_size=1, in_chans=F,
@@ -43,33 +44,33 @@ model.load_state_dict(torch.load("mae_model.pth", map_location="cpu"))
 model.eval()
 
 # === Embed and Upload ===
-# print("=== Embedding and uploading to Qdrant ===")
-# def pad_patch(patch, target_channels):
-#     C, H, W = patch.shape
-#     if C == target_channels:
-#         return patch
-#     padded = np.zeros((target_channels, H, W), dtype=np.float32)
-#     padded[:C] = patch
-#     return padded
+print("=== Embedding and uploading to Qdrant ===")
+def pad_patch(patch, target_channels):
+    C, H, W = patch.shape
+    if C == target_channels:
+        return patch
+    padded = np.zeros((target_channels, H, W), dtype=np.float32)
+    padded[:C] = patch
+    return padded
 
-# points = []
-# for i, path in enumerate(patch_files):
-#     patch = np.load(path).transpose(2, 0, 1)  # (F, H, W)
-#     patch = pad_patch(patch, F)
-#     tensor = torch.tensor(patch).unsqueeze(0)  # (1, F, H, W)
+points = []
+for i, path in enumerate(patch_files):
+    patch = np.load(path).transpose(2, 0, 1)  # (F, H, W)
+    patch = pad_patch(patch, F)
+    tensor = torch.tensor(patch).unsqueeze(0)  # (1, F, H, W)
 
-#     with torch.no_grad():
-#         latent, _, _ = model.forward_encoder(tensor, mask_ratio=0.0)
-#         emb = latent[0].mean(dim=0).cpu().numpy()
+    with torch.no_grad():
+        latent, _, _ = model.forward_encoder(tensor, mask_ratio=0.0)
+        emb = latent[0].mean(dim=0).cpu().numpy()
 
-#     payload = {"file": os.path.basename(path)}
-#     points.append(PointStruct(id=i, vector=emb.tolist(), payload=payload))
+    payload = {"file": os.path.basename(path)}
+    points.append(PointStruct(id=i, vector=emb.tolist(), payload=payload))
 
-# qdrant.upsert(collection_name=COLLECTION_NAME, points=points)
-# print(f"Uploaded {len(points)} vectors to Qdrant.")
+qdrant.upsert(collection_name=COLLECTION_NAME, points=points)
+print(f"Uploaded {len(points)} vectors to Qdrant.")
 
-# === Retrieval Function ===
-def retrieve_description(query_text: str, top_k=3):
+# === Retrieval ===
+def retrieve_patches(query_text: str, top_k=3):
     query_emb = client.embeddings.create(
         input=query_text,
         model="text-embedding-3-small"
@@ -79,33 +80,9 @@ def retrieve_description(query_text: str, top_k=3):
     query_tensor = torch.tensor(query_emb).float().unsqueeze(0)
     query_proj = reducer(query_tensor).squeeze(0).detach().numpy()
     results = qdrant.query_points(collection_name=COLLECTION_NAME, query=query_proj, limit=top_k, with_vectors=True)
-
-    context_blocks = []
-    for i, point in enumerate(results.points):
-        emb = point.vector
-        payload = point.payload
-        block = f"Result {i+1}:\nEmbedding: {emb[:10]}... (truncated)\nMetadata: {payload}\n"
-        context_blocks.append(block)
-
-    context = "\n\n".join(context_blocks)
-
-    prompt = f"""
-    You are a GIS analyst. A user asked the following question:
-    "{query_text}"
-    You have access to the following spatial embeddings and metadata from similar regions:
-    {context}
-    Based on this, provide a helpful, human-friendly answer to the user question using information from the results.
-    Also summarize the data you are provided.
-    """.strip()
-
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    return response.choices[0].message.content.strip()
+    return results
 
 # === Example Query ===
-query = "How many neighborhoods are in Biel?"
-response = retrieve_description(query)
-print(f"--- Response ---\n{response}\n")
+query = "Tell me about public playgrounds in switzerland."
+matched_patches = retrieve_patches(query)
+print(f"--- Patches ---\n{matched_patches}\n")

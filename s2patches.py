@@ -9,7 +9,7 @@ import gc
 
 # === Config ===
 print("=== Configs ===")
-INPUT_DIR = 'uploads'
+INPUT_DIR = 'gpkg_files'
 PATCHES_DIR = 'patches'
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(PATCHES_DIR, exist_ok=True)
@@ -24,8 +24,8 @@ features = {}
 print("=== Getting features ===")
 feature_set = set()
 
-for file_name in os.listdir(INPUT_DIR):
-    path = os.path.join(INPUT_DIR, file_name)
+for filename in os.listdir(INPUT_DIR):
+    path = os.path.join(INPUT_DIR, filename)
     try:
         if path.endswith(".gpkg"):
             layers = pyogrio.list_layers(path)
@@ -38,7 +38,7 @@ for file_name in os.listdir(INPUT_DIR):
             feature_set.update(gdf.columns)
             del gdf; gc.collect()
     except Exception as e:
-        print(f"-- Skipping {file_name}: {e}")
+        print(f"-- Skipping {filename}: {e}")
 
 FEATURE_LIST = sorted(list(feature_set))
 FEATURE_INDEX = {name: i for i, name in enumerate(FEATURE_LIST)}
@@ -104,8 +104,9 @@ def rasterize_from_features(cell_id, local_features, feature_dim):
         feat_mat[i // W, i % W] = local_features.get(n.id(), np.zeros(feature_dim))
     return feat_mat
 
-for file_name in os.listdir(INPUT_DIR):
-    path = os.path.join(INPUT_DIR, file_name)
+for filename in os.listdir(INPUT_DIR):
+    filename_short = filename.replace(".gpkg", "")
+    path = os.path.join(INPUT_DIR, filename)
 
     if path.endswith(".gpkg") or path.endswith(".json"):
         layers = pyogrio.list_layers(path)
@@ -147,7 +148,7 @@ for file_name in os.listdir(INPUT_DIR):
             }
             for cid in local_features:
                 patch = rasterize_from_features(s2.CellId(cid), local_features, local_features[cid].shape[0])
-                np.save(os.path.join(PATCHES_DIR, f"{cid}.npy"), patch)
+                np.save(os.path.join(PATCHES_DIR, f"{filename_short}_{layer_name}_{cid}.npy"), patch)
 
     else:
         try:
@@ -181,6 +182,6 @@ for file_name in os.listdir(INPUT_DIR):
         }
         for cid in local_features:
             patch = rasterize_from_features(s2.CellId(cid), local_features, local_features[cid].shape[0])
-            np.save(os.path.join(PATCHES_DIR, f"{cid}.npy"), patch)
+            np.save(os.path.join(PATCHES_DIR, f"{filename_short}_{layer_name}_{cid}.npy"), patch)
 
 print("Saved patches")

@@ -11,3 +11,4 @@ fsspec==2025.5.1
 pypgrio==0.11.0
 sentence_transformers==4.1.0
 qdrant-client==1.14.3
+deep_translator==1.11.4
