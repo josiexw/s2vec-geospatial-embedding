@@ -5,11 +5,13 @@ import os
 import s2sphere as s2
 from openai import OpenAI
 from dotenv import load_dotenv
+from geopy.geocoders import Nominatim
 
 # === Config ===
 load_dotenv()
 API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=API_KEY)
+geolocator = Nominatim(user_agent="geo_nl_metadata")
 
 INPUT_DIR = 'uploads'
 METADATA_CSV = 'patch_metadata.csv'
@@ -36,23 +38,32 @@ def get_metadata_rows(gdf, file_name, layer_name):
             coords = group["centroid"].apply(lambda pt: f"({pt.y:.5f}, {pt.x:.5f})").tolist()
             features = list(set(group.columns) - {"geometry", "centroid", "cell_id"})
             feature_data = group[features].fillna("").astype(str).apply(lambda row: row.to_dict(), axis=1).tolist()
+            addresses = []
+            for coord in coords:
+                addresses.append(geolocator.reverse(coord))
             rows.append({
                 "filename": file_name,
                 "layer": layer_name,
                 "level": level,
                 "cell_id": cid,
                 "features": ", ".join(features),
-                "coordinates": str(coords),
-                "feature_info": str(feature_data)
+                "coordinates": ", ".join(coords),
+                "addresses": ", ".join(addresses),
+                "feature_info": ", ".join(feature_data)
             })
 
             prompt = f"""
             Given the following geospatial patch metadata, generate 20 human-friendly descriptions.
-            Each description should mention the features and coordinates, be phrased differently, and have maximum 50 words.
-            Separate each description with ===.
+            Then generate 20 possible questions people may ask that the geospatial patch information can answer.
+            Each description should mention the features and coordinates, be phrased differently, and vary in length.
+            Each question should be different and vary in length.
+            Separate each description and question with ===.
 
             Features: {features}
+            Feature info: {feature_data}
             Coordinates: {coords}
+            Addresses: {addresses}
+            The features, info, coordinates, and addresses are ordered respective to each other.
             """
             
             try:
