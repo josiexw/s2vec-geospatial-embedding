@@ -60,14 +60,21 @@ def translate_gpkg(filepath):
     try:
         file_out = os.path.basename(filepath).replace(".gpkg", "_en.gpkg")
         out_path = os.path.join(TRANSLATED_DIR, file_out)
+        existing_layers = []
         if os.path.exists(out_path):
-            print(f"Already translated: {out_path}")
-            return
+            try:
+                existing_layers = [l[0] for l in pyogrio.list_layers(out_path)]
+            except Exception:
+                pass
 
         layers = pyogrio.list_layers(filepath)
 
         for layer in layers:
             layer_name = layer[0]
+            if layer_name in existing_layers:
+                print(f"Skipping already translated layer '{layer_name}' in {filepath}")
+                continue
+
             print(f"Translating {layer_name} in {filepath}")
             try:
                 gdf = gpd.read_file(filepath, layer=layer_name)
@@ -75,17 +82,15 @@ def translate_gpkg(filepath):
                     print(f"Skipping layer {layer_name}: empty or no valid geometry.")
                     continue
             except Exception as e:
-                print(f"Not translating unreadable layer '{layer}' in {filepath}: {e}")
+                print(f"Not translating unreadable layer '{layer_name}' in {filepath}: {e}")
                 continue
 
-            # Translate column names
             rename_map = {
                 col: fast_translate(col)
                 for col in gdf.columns if col.lower() != 'geometry'
             }
             gdf = gdf.rename(columns=rename_map)
 
-            # Translate string values
             for col in gdf.select_dtypes(include='object').columns:
                 gdf[col] = translate_column(gdf[col])
 
@@ -108,5 +113,5 @@ def process_file(file):
 
 if __name__ == "__main__":
     files = [f for f in os.listdir(CURRENT_DIR) if f.endswith(".zip") or f.endswith(".gpkg")]
-    with Pool(processes=min(cpu_count(), 4)) as pool:  # limit
+    with Pool(processes=min(cpu_count(), 4)) as pool:
         pool.map(process_file, files)

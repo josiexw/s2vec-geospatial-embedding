@@ -1,4 +1,3 @@
-from turtle import down
 import requests
 import os
 import csv
@@ -8,7 +7,7 @@ import gc
 TRANSLATOR = GoogleTranslator(source='auto', target='en')
 LANGUAGES = ['de', 'fr', 'it', 'en']
 SAVE_DIR = "gpkg_files"
-CSV_PATH = "geospatial_swiss.csv"
+CSV_PATH = "opendataswiss.parquet.csv"
 MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024
 os.makedirs(SAVE_DIR, exist_ok=True)
 
